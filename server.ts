@@ -488,6 +488,21 @@ const app = express();
 
 app.use(express.json({ limit: '10mb' }));
 
+// Middleware to handle request-based database URL overrides (useful for serverless environments like Vercel)
+app.use((req, res, next) => {
+  const customDbUrl = req.headers['x-database-url'] || req.headers['x-db-url'];
+  if (customDbUrl && typeof customDbUrl === 'string') {
+    const trimmedUrl = customDbUrl.trim();
+    if (trimmedUrl && process.env.DATABASE_URL !== trimmedUrl) {
+      console.log("Database URL overridden via request headers. Resetting pool and initialization...");
+      process.env.DATABASE_URL = trimmedUrl;
+      dbInitialized = false;
+      dbInitializationPromise = null;
+    }
+  }
+  next();
+});
+
 app.get("/api/test-db", async (req, res) => {
   const currentEnvUrl = (process.env.DATABASE_URL || "").trim();
   let status = "Not tested";
@@ -546,21 +561,6 @@ app.get("/api/test-db", async (req, res) => {
     status,
     debugInfo
   });
-});
-
-// Middleware to handle request-based database URL overrides (useful for serverless environments like Vercel)
-app.use((req, res, next) => {
-  const customDbUrl = req.headers['x-database-url'] || req.headers['x-db-url'];
-  if (customDbUrl && typeof customDbUrl === 'string') {
-    const trimmedUrl = customDbUrl.trim();
-    if (trimmedUrl && process.env.DATABASE_URL !== trimmedUrl) {
-      console.log("Database URL overridden via request headers. Resetting pool and initialization...");
-      process.env.DATABASE_URL = trimmedUrl;
-      dbInitialized = false;
-      dbInitializationPromise = null;
-    }
-  }
-  next();
 });
 
 // Middleware to ensure DB is initialized lazily

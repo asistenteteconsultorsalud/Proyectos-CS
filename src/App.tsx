@@ -36,7 +36,7 @@ import { generatePDFReport } from './utils/pdfGenerator';
 export default function App() {
   // --- Persistent State Configuration ---
   const [isLocalMode, setIsLocalMode] = useState<boolean>(() => {
-    return localStorage.getItem('gestor_is_local_mode') === 'true';
+    return localStorage.getItem('gestor_is_local_mode') !== 'false';
   });
 
   const [customDbUrl, setCustomDbUrl] = useState<string>(() => {
@@ -59,7 +59,7 @@ export default function App() {
   const [dbError, setDbError] = useState<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_projects');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -69,7 +69,7 @@ export default function App() {
   });
 
   const [followUps, setFollowUps] = useState<ProjectFollowUp[]>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_followups');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -79,7 +79,7 @@ export default function App() {
   });
 
   const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_read_notif_ids');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -102,7 +102,7 @@ export default function App() {
 
   // --- Dynamic customizable areas and stages ---
   const [involvedAreas, setInvolvedAreas] = useState<string[]>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_involved_areas');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -120,7 +120,7 @@ export default function App() {
   });
 
   const [peopleByArea, setPeopleByArea] = useState<Record<string, string[]>>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_people_by_area');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -130,7 +130,7 @@ export default function App() {
   });
 
   const [teamRoster, setTeamRoster] = useState<string[]>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_team_roster');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -144,7 +144,7 @@ export default function App() {
   });
 
   const [areaColors, setAreaColors] = useState<Record<string, string>>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_area_colors');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}
@@ -154,7 +154,7 @@ export default function App() {
   });
 
   const [stageDetails, setStageDetails] = useState<Record<string, { label: string; color: string; bg: string; border: string; text: string; definition: string; keyDeliverables: string[]; typicalDuration: string }>>(() => {
-    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+    if (localStorage.getItem('gestor_is_local_mode') !== 'false') {
       const local = localStorage.getItem('gestor_stage_details');
       if (local) {
         try { return JSON.parse(local); } catch (e) {}

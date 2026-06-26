@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, Sliders, Briefcase, Plus, Edit2, Trash2, Check, X, AlertTriangle, HelpCircle, Save, User } from 'lucide-react';
+import { Layers, Sliders, Briefcase, Plus, Edit2, Trash2, Check, X, AlertTriangle, HelpCircle, Save, User, Database, Wifi, WifiOff, Activity, CheckCircle, AlertCircle, Terminal } from 'lucide-react';
 import { getAreaStyle, AREA_COLOR_PRESETS, getDefaultPresetKey } from '../types';
 
 interface StageData {
@@ -68,6 +68,40 @@ export default function SettingsPanel({
   onBypassDb,
 }: SettingsPanelProps) {
   const [activeSubTab, setActiveSubTab] = useState<'areas' | 'etapas' | 'conexion'>('areas');
+
+  // --- Connection Test States ---
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testDetails, setTestDetails] = useState<any>(null);
+
+  const handleTestConnection = async (urlToTest: string) => {
+    setTestStatus('testing');
+    setTestError(null);
+    setTestDetails(null);
+    try {
+      const headers: Record<string, string> = {};
+      const trimmedUrl = (urlToTest || '').trim();
+      if (trimmedUrl) {
+        headers['x-database-url'] = trimmedUrl;
+      }
+      const res = await fetch('/api/test-db', { headers });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: El servidor no pudo procesar la solicitud de diagnóstico.`);
+      }
+      const data = await res.json();
+      if (data.status === 'Success') {
+        setTestStatus('success');
+        setTestDetails(data.debugInfo);
+      } else {
+        setTestStatus('failed');
+        setTestError(data.debugInfo?.connect_error || 'No se pudo establecer conexión con la base de datos de Neon.');
+        setTestDetails(data.debugInfo);
+      }
+    } catch (err: any) {
+      setTestStatus('failed');
+      setTestError(err.message || String(err));
+    }
+  };
 
   // --- Area form states ---
   const [newAreaName, setNewAreaName] = useState('');
@@ -809,28 +843,81 @@ export default function SettingsPanel({
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-sm">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
             <h3 className="text-sm font-black text-slate-850 flex items-center gap-1.5 uppercase tracking-wide">
-              <Sliders className="w-4 h-4 text-blue-600" />
+              <Database className="w-4 h-4 text-blue-600" />
               Configuración de Conexión de Base de Datos
             </h3>
             <span className="text-[10px] text-slate-400 font-bold">Neon PostgreSQL</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Actualizar URL de Conexión desde la Aplicación</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Puedes pegar directamente tu cadena de conexión (Connection String) de Neon PostgreSQL aquí. 
-                Se guardará localmente en tu navegador y se usará para realizar todas las consultas de la aplicación.
+          {/* Current Mode Banner */}
+          <div className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${
+            isLocalMode 
+              ? 'bg-amber-50/50 border-amber-150 text-amber-800' 
+              : 'bg-emerald-50/50 border-emerald-150 text-emerald-800'
+          }`}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                {isLocalMode ? (
+                  <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-700">
+                    <WifiOff className="w-4 h-4" />
+                    Modo Local Offline (Base de datos desactivada)
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-700">
+                    <Wifi className="w-4 h-4 animate-pulse" />
+                    Modo Sincronizado Cloud (Base de datos activa)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {isLocalMode 
+                  ? 'La aplicación se ejecuta de manera local de forma predeterminada. Los proyectos y seguimientos se guardan de forma instantánea y segura únicamente en la memoria de este navegador web.'
+                  : 'Los datos de la aplicación se leen y escriben en tiempo real de forma segura en tu base de datos de Neon Cloud.'
+                }
               </p>
+            </div>
+            
+            <div>
+              {isLocalMode ? (
+                <button
+                  type="button"
+                  onClick={onSwitchToDbMode}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shadow-sm shadow-emerald-100 shrink-0"
+                >
+                  Activar Sincronización DB
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onBypassDb}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shadow-sm shadow-amber-100 shrink-0"
+                >
+                  Desactivar y Usar Modo Local
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Enlace de Conexión Personalizado</h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  ¿Quieres conectar la aplicación con otra base de datos de Neon o Vercel? 
+                  Pega tu enlace de conexión. Se guardará localmente en tu navegador y se utilizará para comunicarse con la base de datos de Neon.
+                </p>
+              </div>
 
               <form onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
                 const newUrl = formData.get('dbUrl') as string;
                 onUpdateCustomDbUrl(newUrl);
+                // Automatically run test on save
+                handleTestConnection(newUrl);
               }} className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-600 uppercase">Enlace de Conexión (DATABASE_URL)</label>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase">DATABASE_URL (Connection String)</label>
                   <input
                     type="text"
                     name="dbUrl"
@@ -845,7 +932,18 @@ export default function SettingsPanel({
                     type="submit"
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
                   >
-                    Guardar y Conectar
+                    Guardar y Probar Conexión
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementsByName('dbUrl')[0] as HTMLInputElement;
+                      handleTestConnection(input?.value || customDbUrl);
+                    }}
+                    disabled={testStatus === 'testing'}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    Solo Probar
                   </button>
                   {customDbUrl && (
                     <button
@@ -854,36 +952,107 @@ export default function SettingsPanel({
                         onUpdateCustomDbUrl('');
                         const input = document.getElementsByName('dbUrl')[0] as HTMLInputElement;
                         if (input) input.value = '';
+                        setTestStatus('idle');
+                        setTestError(null);
+                        setTestDetails(null);
                       }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all"
+                      className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-lg text-xs font-bold transition-all"
                     >
-                      Restaurar por Defecto
+                      Limpiar
                     </button>
                   )}
                 </div>
               </form>
 
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Modo de Operación</h4>
-                <div className="flex gap-2">
-                  {isLocalMode ? (
-                    <button
-                      onClick={onSwitchToDbMode}
-                      className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold transition-all"
-                    >
-                      Cambiar a Modo Sincronizado (DB)
-                    </button>
-                  ) : (
-                    <button
-                      onClick={onBypassDb}
-                      className="px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold transition-all"
-                    >
-                      Cambiar a Modo Local (Sin DB)
-                    </button>
+              {/* Dynamic Connection Diagnostics Result Panel */}
+              {testStatus !== 'idle' && (
+                <div className="p-4 rounded-xl border bg-slate-50 border-slate-200 space-y-3 transition-all animate-fadeIn">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-150">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                      <Activity className="w-3.5 h-3.5 text-blue-500" />
+                      Diagnóstico de Conexión
+                    </span>
+                    {testStatus === 'testing' && (
+                      <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                        Verificando...
+                      </span>
+                    )}
+                    {testStatus === 'success' && (
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Conectado
+                      </span>
+                    )}
+                    {testStatus === 'failed' && (
+                      <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <X className="w-3 h-3" /> Error de Conexión
+                      </span>
+                    )}
+                  </div>
+
+                  {testStatus === 'testing' && (
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Intentando establecer una conexión de socket TCP/IP con el servidor de Neon PostgreSQL, enviando credenciales de autenticación y solicitando versión de software...
+                    </p>
+                  )}
+
+                  {testStatus === 'success' && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-emerald-800 font-medium">
+                        ¡Enlace verificado con éxito! La aplicación puede conectarse a tu base de datos de Neon.
+                      </p>
+                      {testDetails?.db_version && (
+                        <div className="bg-slate-900 text-slate-300 p-2.5 rounded-lg text-[10px] font-mono leading-relaxed flex items-start gap-1.5">
+                          <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <span>{testDetails.db_version}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {testStatus === 'failed' && (
+                    <div className="space-y-3">
+                      <div className="bg-rose-50/50 border border-rose-100 rounded-lg p-3 text-xs text-rose-900 space-y-1">
+                        <div className="font-bold flex items-center gap-1 text-rose-800">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          Detalles del Error Capturado:
+                        </div>
+                        <p className="font-mono text-[11px] bg-white border border-rose-150 p-2 rounded text-rose-700 break-all select-all select-text font-medium leading-normal max-h-48 overflow-y-auto">
+                          {testError}
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(testError || '');
+                            alert('Detalles del error copiados al portapapeles.');
+                          }}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-250 rounded text-[10px] font-bold text-slate-600 transition-all"
+                        >
+                          Copiar Error para Soporte
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementsByName('dbUrl')[0] as HTMLInputElement;
+                            handleTestConnection(input?.value || customDbUrl);
+                          }}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[10px] font-bold text-blue-700 transition-all rounded"
+                        >
+                          Reintentar Diagnóstico
+                        </button>
+                      </div>
+
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        💡 <strong>Consejo:</strong> Si obtienes un error como <i>"password authentication failed"</i> o <i>"ETIMEDOUT"</i>, verifica cuidadosamente que la contraseña o el host en el enlace DATABASE_URL sean válidos y no contengan comillas ni espacios innecesarios.
+                      </p>
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
+
 
             <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 text-xs">
               <h4 className="font-black text-slate-800 uppercase tracking-wide text-[10px] flex items-center gap-1.5">
