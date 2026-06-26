@@ -35,14 +35,45 @@ import { generatePDFReport } from './utils/pdfGenerator';
 
 export default function App() {
   // --- Persistent State Configuration ---
+  const [isLocalMode, setIsLocalMode] = useState<boolean>(() => {
+    return localStorage.getItem('gestor_is_local_mode') === 'true';
+  });
+
   const preventSyncRef = useRef(false);
   const [isSilentFetching, setIsSilentFetching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'dashboard' | 'projects' | 'new-project' | 'tracking' | 'settings'>('dashboard');
   const [dbError, setDbError] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
-  const [followUps, setFollowUps] = useState<ProjectFollowUp[]>(INITIAL_FOLLOWUPS);
-  const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
+
+  const [projects, setProjects] = useState<Project[]>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_projects');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return INITIAL_PROJECTS;
+  });
+
+  const [followUps, setFollowUps] = useState<ProjectFollowUp[]>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_followups');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return INITIAL_FOLLOWUPS;
+  });
+
+  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_read_notif_ids');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return [];
+  });
 
   // Flow and Notification Feedbacks states
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'info' | 'error' | 'warning' }[]>([]);
@@ -57,19 +88,41 @@ export default function App() {
   };
 
   // --- Dynamic customizable areas and stages ---
-  const [involvedAreas, setInvolvedAreas] = useState<string[]>([
-    'Consultoría Técnica y Auditoría',
-    'TI y Salud Digital',
-    'Jurídico y Regulación',
-    'Financiera y Tarifas',
-    'Comunicaciones y Eventos',
-    'Formación y Capacitación',
-    'Comercial y Mercadeo',
-  ]);
+  const [involvedAreas, setInvolvedAreas] = useState<string[]>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_involved_areas');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return [
+      'Consultoría Técnica y Auditoría',
+      'TI y Salud Digital',
+      'Jurídico y Regulación',
+      'Financiera y Tarifas',
+      'Comunicaciones y Eventos',
+      'Formación y Capacitación',
+      'Comercial y Mercadeo',
+    ];
+  });
 
-  const [peopleByArea, setPeopleByArea] = useState<Record<string, string[]>>(PREDEFINED_PEOPLE_BY_AREA);
+  const [peopleByArea, setPeopleByArea] = useState<Record<string, string[]>>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_people_by_area');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return PREDEFINED_PEOPLE_BY_AREA;
+  });
 
   const [teamRoster, setTeamRoster] = useState<string[]>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_team_roster');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
     const allNames = new Set<string>();
     Object.values(PREDEFINED_PEOPLE_BY_AREA).forEach(names => {
       names.forEach(name => allNames.add(name));
@@ -77,111 +130,132 @@ export default function App() {
     return Array.from(allNames);
   });
 
-  const [areaColors, setAreaColors] = useState<Record<string, string>>({});
-
-  const [stageDetails, setStageDetails] = useState<Record<string, { label: string; color: string; bg: string; border: string; text: string; definition: string; keyDeliverables: string[]; typicalDuration: string }>>({
-    'POR_PRESENTAR': {
-      label: 'Por Presentar',
-      color: 'bg-blue-500',
-      bg: 'bg-blue-50',
-      border: 'border-blue-200',
-      text: 'text-blue-700',
-      definition: 'Formulación técnica, estructuración de la propuesta comercial de consultoría y estructuración de tarifas iniciales.',
-      keyDeliverables: [
-        'Estudio previo y diagnóstico de necesidades del cliente',
-        'Estructura de costos, honorarios y modelo preliminar',
-        'Propuesta técnica y económica formalizada'
-      ],
-      typicalDuration: '1 - 2 semanas'
-    },
-    'EVALUACION': {
-      label: 'En Evaluación',
-      color: 'bg-purple-500',
-      bg: 'bg-purple-50',
-      border: 'border-purple-200',
-      text: 'text-purple-700',
-      definition: 'Evaluación de convenios por comités de contratación, ajuste de copagos, reglamentos de firmas y mesas de concertación.',
-      keyDeliverables: [
-        'Mesas de concertación técnica',
-        'Estudio de viabilidad jurídica y regulatoria del sector salud',
-        'Aprobación de la junta directiva o comités delegados'
-      ],
-      typicalDuration: '2 - 3 semanas'
-    },
-    'POR_INICIAR': {
-      label: 'Listo para Inicio',
-      color: 'bg-amber-500',
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      text: 'text-amber-700',
-      definition: 'Suscripción de actas de inicio, legalización de pólizas de cumplimiento, entrega de anticipos y asignación de cronograma.',
-      keyDeliverables: [
-        'Firma de contrato judicial o acta administrativa de inicio',
-        'Suscripción de garantías o pólizas de cumplimiento',
-        'Asignación formal de la terna de consultores expertos'
-      ],
-      typicalDuration: '1 semana'
-    },
-    'EJECUCION': {
-      label: 'En Ejecución',
-      color: 'bg-emerald-500',
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-200',
-      text: 'text-emerald-700',
-      definition: 'Fase central operativa de auditoría estructural, desarrollo de software, capacitaciones presenciales y mesas operativas.',
-      keyDeliverables: [
-        'Auditorías técnico-médicas recurrentes',
-        'Capacitaciones y talleres presenciales/virtuales con firmas de asistencia',
-        'Soportes de facturación de hitos intermedios'
-      ],
-      typicalDuration: '1 - 6 meses'
-    },
-    'PAUSA': {
-      label: 'En Pausa / Bloqueado',
-      color: 'bg-rose-500',
-      bg: 'bg-rose-50',
-      border: 'border-rose-200',
-      text: 'text-rose-700',
-      definition: 'Flujo detenido temporalmente por inconvenientes críticos externos, demoras en comités administrativos del cliente, o suspensiones pactadas.',
-      keyDeliverables: [
-        'Acta de suspensión temporal con firmas justificantes',
-        'Plan de mitigación o desbloqueo del obstáculo operacional',
-        'Revisiones extraordinarias semanales'
-      ],
-      typicalDuration: 'Frecuencia variable'
-    },
-    'COMPLETADO': {
-      label: 'Finalizado',
-      color: 'bg-slate-600',
-      bg: 'bg-slate-100',
-      border: 'border-slate-200',
-      text: 'text-slate-700',
-      definition: 'Cierre formal de consultoría. Radicación final de cuentas, transferencias de conocimiento y actas de liquidación.',
-      keyDeliverables: [
-        'Informe final ejecutivo encuadernado y digitalizado',
-        'Acta de liquidación del contrato a mutuo acuerdo',
-        'Encuesta de satisfacción de servicios del cliente'
-      ],
-      typicalDuration: 'Cierre inmediato'
-    },
-    'CANCELADO': {
-      label: 'Cancelado',
-      color: 'bg-slate-400',
-      bg: 'bg-slate-50',
-      border: 'border-slate-200',
-      text: 'text-slate-500',
-      definition: 'Terminación anticipada del proyecto por decisión mutua, cambios normativos de sanidad, o insolvencia de la entidad contratista.',
-      keyDeliverables: [
-        'Acta de rescisión anticipada detallada',
-        'Relación de pagos proporcionales consolidados hasta la fecha',
-        'Devolución de bases de datos seguras bajo confidencialidad'
-      ],
-      typicalDuration: 'Terminado'
+  const [areaColors, setAreaColors] = useState<Record<string, string>>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_area_colors');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
     }
+    return {};
+  });
+
+  const [stageDetails, setStageDetails] = useState<Record<string, { label: string; color: string; bg: string; border: string; text: string; definition: string; keyDeliverables: string[]; typicalDuration: string }>>(() => {
+    if (localStorage.getItem('gestor_is_local_mode') === 'true') {
+      const local = localStorage.getItem('gestor_stage_details');
+      if (local) {
+        try { return JSON.parse(local); } catch (e) {}
+      }
+    }
+    return {
+      'POR_PRESENTAR': {
+        label: 'Por Presentar',
+        color: 'bg-blue-500',
+        bg: 'bg-blue-50',
+        border: 'border-blue-200',
+        text: 'text-blue-700',
+        definition: 'Formulación técnica, estructuración de la propuesta comercial de consultoría y estructuración de tarifas iniciales.',
+        keyDeliverables: [
+          'Estudio previo y diagnóstico de necesidades del cliente',
+          'Estructura de costos, honorarios y modelo preliminar',
+          'Propuesta técnica y económica formalizada'
+        ],
+        typicalDuration: '1 - 2 semanas'
+      },
+      'EVALUACION': {
+        label: 'En Evaluación',
+        color: 'bg-purple-500',
+        bg: 'bg-purple-50',
+        border: 'border-purple-200',
+        text: 'text-purple-700',
+        definition: 'Evaluación de convenios por comités de contratación, ajuste de copagos, reglamentos de firmas y mesas de concertación.',
+        keyDeliverables: [
+          'Mesas de concertación técnica',
+          'Estudio de viabilidad jurídica y regulatoria del sector salud',
+          'Aprobación de la junta directiva o comités delegados'
+        ],
+        typicalDuration: '2 - 3 semanas'
+      },
+      'POR_INICIAR': {
+        label: 'Listo para Inicio',
+        color: 'bg-amber-500',
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        text: 'text-amber-700',
+        definition: 'Suscripción de actas de inicio, legalización de pólizas de cumplimiento, entrega de anticipos y asignación de cronograma.',
+        keyDeliverables: [
+          'Firma de contrato judicial o acta administrativa de inicio',
+          'Suscripción de garantías o pólizas de cumplimiento',
+          'Asignación formal de la terna de consultores expertos'
+        ],
+        typicalDuration: '1 semana'
+      },
+      'EJECUCION': {
+        label: 'En Ejecución',
+        color: 'bg-emerald-500',
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-200',
+        text: 'text-emerald-700',
+        definition: 'Fase central operativa de auditoría estructural, desarrollo de software, capacitaciones presenciales y mesas operativas.',
+        keyDeliverables: [
+          'Auditorías técnico-médicas recurrentes',
+          'Capacitaciones y talleres presenciales/virtuales con firmas de asistencia',
+          'Soportes de facturación de hitos intermedios'
+        ],
+        typicalDuration: '1 - 6 meses'
+      },
+      'PAUSA': {
+        label: 'En Pausa / Bloqueado',
+        color: 'bg-rose-500',
+        bg: 'bg-rose-50',
+        border: 'border-rose-200',
+        text: 'text-rose-700',
+        definition: 'Flujo detenido temporalmente por inconvenientes críticos externos, demoras en comités administrativos del cliente, o suspensiones pactadas.',
+        keyDeliverables: [
+          'Acta de suspensión temporal con firmas justificantes',
+          'Plan de mitigación o desbloqueo del obstáculo operacional',
+          'Revisiones extraordinarias semanales'
+        ],
+        typicalDuration: 'Frecuencia variable'
+      },
+      'COMPLETADO': {
+        label: 'Finalizado',
+        color: 'bg-slate-600',
+        bg: 'bg-slate-100',
+        border: 'border-slate-200',
+        text: 'text-slate-700',
+        definition: 'Cierre formal de consultoría. Radicación final de cuentas, transferencias de conocimiento y actas de liquidación.',
+        keyDeliverables: [
+          'Informe final ejecutivo encuadernado y digitalizado',
+          'Acta de liquidación del contrato a mutuo acuerdo',
+          'Encuesta de satisfacción de servicios del cliente'
+        ],
+        typicalDuration: 'Cierre inmediato'
+      },
+      'CANCELADO': {
+        label: 'Cancelado',
+        color: 'bg-slate-400',
+        bg: 'bg-slate-50',
+        border: 'border-slate-200',
+        text: 'text-slate-500',
+        definition: 'Terminación anticipada del proyecto por decisión mutua, cambios normativos de sanidad, o insolvencia de la entidad contratista.',
+        keyDeliverables: [
+          'Acta de rescisión anticipada detallada',
+          'Relación de pagos proporcionales consolidados hasta la fecha',
+          'Devolución de bases de datos seguras bajo confidencialidad'
+        ],
+        typicalDuration: 'Terminado'
+      }
+    };
   });
 
   // Fetch initial data or silent updates from DB
   const loadData = async (silent = false) => {
+    if (isLocalMode) {
+      if (!silent) setLoading(false);
+      setIsSilentFetching(false);
+      return;
+    }
     try {
       if (silent) {
         setIsSilentFetching(true);
@@ -276,9 +350,27 @@ export default function App() {
   }, [currentView]);
 
   const handleBypassDb = () => {
+    setIsLocalMode(true);
+    localStorage.setItem('gestor_is_local_mode', 'true');
+    // Guardar el estado actual en localStorage para no perder nada al iniciar modo local
+    localStorage.setItem('gestor_projects', JSON.stringify(projects));
+    localStorage.setItem('gestor_followups', JSON.stringify(followUps));
+    localStorage.setItem('gestor_involved_areas', JSON.stringify(involvedAreas));
+    localStorage.setItem('gestor_people_by_area', JSON.stringify(peopleByArea));
+    localStorage.setItem('gestor_team_roster', JSON.stringify(teamRoster));
+    localStorage.setItem('gestor_area_colors', JSON.stringify(areaColors));
+    localStorage.setItem('gestor_stage_details', JSON.stringify(stageDetails));
+    localStorage.setItem('gestor_read_notif_ids', JSON.stringify(readNotifIds));
+
     setDbError(null);
     setLoading(false);
-    showToast("Trabajando en modo local (Desconectado de la base de datos)", "warning");
+    showToast("Trabajando en modo local (Desconectado de la base de datos). Tus datos se guardarán en el navegador.", "warning");
+  };
+
+  const handleSwitchToDbMode = () => {
+    setIsLocalMode(false);
+    localStorage.removeItem('gestor_is_local_mode');
+    window.location.reload();
   };
 
   const handleRetryDb = () => {
@@ -290,6 +382,16 @@ export default function App() {
   // Helper to save setting to DB
   const saveSettingToDb = (key: string, value: any) => {
     if (preventSyncRef.current) return;
+    if (isLocalMode) {
+      // In local mode, save directly to localStorage instead of fetch
+      if (key === 'involvedAreas') localStorage.setItem('gestor_involved_areas', JSON.stringify(value));
+      else if (key === 'peopleByArea') localStorage.setItem('gestor_people_by_area', JSON.stringify(value));
+      else if (key === 'teamRoster') localStorage.setItem('gestor_team_roster', JSON.stringify(value));
+      else if (key === 'areaColors') localStorage.setItem('gestor_area_colors', JSON.stringify(value));
+      else if (key === 'stageDetails') localStorage.setItem('gestor_stage_details', JSON.stringify(value));
+      else if (key === 'readNotifIds') localStorage.setItem('gestor_read_notif_ids', JSON.stringify(value));
+      return;
+    }
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -297,54 +399,62 @@ export default function App() {
     }).catch(err => console.error(`Error saving setting ${key} to DB:`, err));
   };
 
-  // Synchronize state changes to Neon Database when loaded
+  // Synchronize state changes to Neon Database or localStorage when loaded
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
+    if (isLocalMode) {
+      localStorage.setItem('gestor_projects', JSON.stringify(projects));
+      return;
+    }
     fetch('/api/projects/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(projects)
     }).catch(err => console.error("Error syncing projects to DB:", err));
-  }, [projects, loading]);
+  }, [projects, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
+    if (isLocalMode) {
+      localStorage.setItem('gestor_followups', JSON.stringify(followUps));
+      return;
+    }
     fetch('/api/followups/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(followUps)
     }).catch(err => console.error("Error syncing followups to DB:", err));
-  }, [followUps, loading]);
+  }, [followUps, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('involvedAreas', involvedAreas);
-  }, [involvedAreas, loading]);
+  }, [involvedAreas, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('peopleByArea', peopleByArea);
-  }, [peopleByArea, loading]);
+  }, [peopleByArea, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('teamRoster', teamRoster);
-  }, [teamRoster, loading]);
+  }, [teamRoster, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('areaColors', areaColors);
-  }, [areaColors, loading]);
+  }, [areaColors, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('stageDetails', stageDetails);
-  }, [stageDetails, loading]);
+  }, [stageDetails, loading, isLocalMode]);
 
   useEffect(() => {
     if (loading || preventSyncRef.current) return;
     saveSettingToDb('readNotifIds', readNotifIds);
-  }, [readNotifIds, loading]);
+  }, [readNotifIds, loading, isLocalMode]);
 
   // Action handlers for Areas
   const handleAddArea = (areaName: string, colorKey?: string) => {
@@ -1082,26 +1192,39 @@ export default function App() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-xs">
           <div className="flex items-center gap-2.5">
             <span className="relative flex h-2.5 w-2.5">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isSilentFetching ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isSilentFetching ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isLocalMode ? 'bg-amber-400' : isSilentFetching ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isLocalMode ? 'bg-amber-500' : isSilentFetching ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
             </span>
             <div className="text-xs">
-              <span className="font-semibold text-slate-700">Base de Datos (Neon PostgreSQL):</span>{' '}
-              <span className={`font-bold ${isSilentFetching ? 'text-amber-600' : 'text-emerald-600'}`}>
-                {isSilentFetching ? 'Sincronizando información en tiempo real...' : 'Conectado y Actualizado'}
+              <span className="font-semibold text-slate-700">Estado de la Conexión:</span>{' '}
+              <span className={`font-bold ${isLocalMode ? 'text-amber-600' : isSilentFetching ? 'text-amber-600' : 'text-emerald-600'}`}>
+                {isLocalMode 
+                  ? 'Modo Local (Desconectado de la Base de Datos)' 
+                  : isSilentFetching ? 'Sincronizando información en tiempo real...' : 'Conectado a Neon PostgreSQL (Sincronizado)'}
               </span>
             </div>
           </div>
           
-          <button
-            onClick={() => loadData(true)}
-            disabled={isSilentFetching}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer active:scale-95 disabled:opacity-50 bg-slate-50/50`}
-            title="Sincronizar y actualizar datos de la base de datos"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isSilentFetching ? 'animate-spin' : ''}`} />
-            <span>Actualizar Datos</span>
-          </button>
+          {isLocalMode ? (
+            <button
+              onClick={handleSwitchToDbMode}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold text-amber-700 hover:bg-amber-50 transition cursor-pointer active:scale-95 bg-amber-50/50"
+              title="Volver a intentar conectar con la base de datos de Neon"
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
+              <span>Conectar Base de Datos</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => loadData(true)}
+              disabled={isSilentFetching}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer active:scale-95 disabled:opacity-50 bg-slate-50/50`}
+              title="Sincronizar y actualizar datos de la base de datos"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isSilentFetching ? 'animate-spin' : ''}`} />
+              <span>Actualizar Datos</span>
+            </button>
+          )}
         </div>
 
         {/* Dynamic Inner Layout Switcher with Framer Motion AnimatePresence */}
