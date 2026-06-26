@@ -4,7 +4,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import { INITIAL_PROJECTS, INITIAL_FOLLOWUPS } from './src/mockData';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 // Lazy-initialize connection pool so that DATABASE_URL is read at runtime
 const { Pool } = pg;
@@ -599,10 +599,12 @@ async function ensureDb() {
   await dbInitializationPromise;
 }
 
-// Ensure database is initialized before any API request is handled (except db-status)
+// Ensure database is initialized before any API request is handled (except db-status and test-db)
 app.use("/api", async (req, res, next) => {
   // Allow checking connection status even if DB is failing to initialize
-  if (req.path === "/db-status" || req.url.endsWith("/db-status") || req.path === "/test-db" || req.url.endsWith("/test-db")) {
+  const isBypass = req.path.includes("db-status") || req.path.includes("test-db") || 
+                   req.originalUrl.includes("db-status") || req.originalUrl.includes("test-db");
+  if (isBypass) {
     return next();
   }
   try {
