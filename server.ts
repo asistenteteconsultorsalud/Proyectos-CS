@@ -12,16 +12,58 @@ const { Pool } = pg;
 let poolInstance: pg.Pool | null = null;
 let lastUsedDatabaseUrl: string | null = null;
 
+function sanitizeDatabaseUrl(rawUrl: string): string {
+  let cleaned = (rawUrl || "").trim();
+
+  // 1. Remove terminal command prefix if present (e.g. psql "postgresql://..." or psql postgresql://...)
+  cleaned = cleaned.replace(/^psql\s+(-d\s+|--dbname=)?/i, "").trim();
+
+  // 2. Remove surrounding quotes or backticks recursively
+  let changed = true;
+  while (changed) {
+    const original = cleaned;
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.slice(1, -1).trim();
+    } else if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+      cleaned = cleaned.slice(1, -1).trim();
+    } else if (cleaned.startsWith('`') && cleaned.endsWith('`')) {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+    if (cleaned === original) {
+      changed = false;
+    }
+  }
+
+  // 3. Remove single stray quotes at the boundaries
+  if (cleaned.startsWith('"')) cleaned = cleaned.slice(1).trim();
+  if (cleaned.endsWith('"')) cleaned = cleaned.slice(0, -1).trim();
+  if (cleaned.startsWith("'")) cleaned = cleaned.slice(1).trim();
+  if (cleaned.endsWith("'")) cleaned = cleaned.slice(0, -1).trim();
+
+  if (!cleaned) return "";
+
+  // 4. Safely parse and adjust search params
+  try {
+    const parsedUrl = new URL(cleaned);
+    parsedUrl.searchParams.delete("channel_binding");
+    if (!parsedUrl.searchParams.has("sslmode")) {
+      parsedUrl.searchParams.set("sslmode", "require");
+    }
+    return parsedUrl.toString();
+  } catch (err) {
+    console.warn("Falling back to regex cleanup for DATABASE_URL", err);
+    let temp = cleaned;
+    temp = temp.replace(/([?&])channel_binding=[^&]*/g, "");
+    temp = temp.replace(/\?&/g, "?").replace(/&&/g, "&").replace(/\?$/g, "").replace(/&$/g, "");
+    if (!temp.includes("sslmode=")) {
+      temp += (temp.includes("?") ? "&" : "?") + "sslmode=require";
+    }
+    return temp;
+  }
+}
+
 function getPool(): pg.Pool {
-  let currentEnvUrl = (process.env.DATABASE_URL || "").trim();
-  
-  // Clean potential enclosing double or single quotes from manual copy-paste in Vercel settings
-  if (currentEnvUrl.startsWith('"') && currentEnvUrl.endsWith('"')) {
-    currentEnvUrl = currentEnvUrl.slice(1, -1).trim();
-  }
-  if (currentEnvUrl.startsWith("'") && currentEnvUrl.endsWith("'")) {
-    currentEnvUrl = currentEnvUrl.slice(1, -1).trim();
-  }
+  const currentEnvUrl = (process.env.DATABASE_URL || "").trim();
   
   if (poolInstance && lastUsedDatabaseUrl !== currentEnvUrl) {
     console.log("DATABASE_URL changed or initialized. Recreating connection pool...");
@@ -34,18 +76,9 @@ function getPool(): pg.Pool {
       throw new Error("DATABASE_URL variable is empty or not defined. Please verify your Vercel project Environment Variables configuration.");
     }
     
-    let sanitizedUrl = currentEnvUrl;
-    try {
-      const parsedUrl = new URL(sanitizedUrl);
-      parsedUrl.searchParams.delete("channel_binding");
-      if (!parsedUrl.searchParams.has("sslmode")) {
-        parsedUrl.searchParams.set("sslmode", "require");
-      }
-      sanitizedUrl = parsedUrl.toString();
-    } catch (err) {
-      console.warn("Could not parse DATABASE_URL with standard URL parser, falling back to regex cleanup", err);
-      sanitizedUrl = sanitizedUrl.replace(/([?&])channel_binding=[^&]*/g, "");
-      sanitizedUrl = sanitizedUrl.replace(/\?&/g, "?").replace(/&&/g, "&").replace(/\?$/g, "").replace(/&$/g, "");
+    const sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
+    if (!sanitizedUrl) {
+      throw new Error("DATABASE_URL is invalid or empty after sanitization.");
     }
     
     poolInstance = new Pool({
@@ -475,37 +508,37 @@ app.get("/api/test-db", async (req, res) => {
       debugInfo.raw_preview = currentEnvUrl.substring(0, 15) + "..." + currentEnvUrl.substring(Math.max(0, currentEnvUrl.length - 15));
     }
 
-    let sanitizedUrl = currentEnvUrl;
+    let sanitizedUrl = "";
     try {
-      const parsedUrl = new URL(sanitizedUrl);
-      parsedUrl.searchParams.delete("channel_binding");
-      if (!parsedUrl.searchParams.has("sslmode")) {
-        parsedUrl.searchParams.set("sslmode", "require");
-      }
-      sanitizedUrl = parsedUrl.toString();
+      sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
       debugInfo.sanitized_preview = sanitizedUrl.replace(/\/\/([^:]+):([^@]+)@/, "//$1:****@");
     } catch (err: any) {
       debugInfo.sanitizing_error = err.message;
     }
 
-    const client = new pg.Client({
-      connectionString: sanitizedUrl,
-      ssl: { rejectUnauthorized: false },
-    });
-
-    try {
-      await client.connect();
-      const dbRes = await client.query("SELECT version()");
-      status = "Success";
-      debugInfo.db_version = dbRes.rows[0]?.version;
-      await client.end();
-    } catch (connectErr: any) {
+    if (!sanitizedUrl) {
       status = "Failed";
-      debugInfo.connect_error = connectErr.message || String(connectErr);
-      debugInfo.connect_error_stack = connectErr.stack;
+      debugInfo.connect_error = "DATABASE_URL is empty or invalid after sanitization.";
+    } else {
+      const client = new pg.Client({
+        connectionString: sanitizedUrl,
+        ssl: { rejectUnauthorized: false },
+      });
+
       try {
+        await client.connect();
+        const dbRes = await client.query("SELECT version()");
+        status = "Success";
+        debugInfo.db_version = dbRes.rows[0]?.version;
         await client.end();
-      } catch (e) {}
+      } catch (connectErr: any) {
+        status = "Failed";
+        debugInfo.connect_error = connectErr.message || String(connectErr);
+        debugInfo.connect_error_stack = connectErr.stack;
+        try {
+          await client.end();
+        } catch (e) {}
+      }
     }
   }
 
