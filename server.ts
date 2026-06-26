@@ -89,7 +89,7 @@ function getPool(): pg.Pool {
       ssl: { rejectUnauthorized: false },
       max: 4,                      // Keep connection count low for Serverless / FaaS environments
       idleTimeoutMillis: 8000,     // Close idle clients fast to prevent connection leaks
-      connectionTimeoutMillis: 12000, // Wait up to 12s for Neon database cold-start wakeup
+      connectionTimeoutMillis: 5000, // Fail fast (5s) so Serverless/FaaS won't hit function timeout limits
     });
     lastUsedDatabaseUrl = currentEnvUrl;
   }
@@ -552,7 +552,13 @@ app.get("/api/test-db", async (req, res) => {
 
         if (client) {
           try {
-            await client.connect();
+            // Protect connection attempt with a 4-second timeout to prevent serverless function hangs
+            const connectPromise = client.connect();
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Connection timed out (4s limit exceeded)")), 4000)
+            );
+            await Promise.race([connectPromise, timeoutPromise]);
+
             const dbRes = await client.query("SELECT version()");
             status = "Success";
             debugInfo.db_version = dbRes.rows[0]?.version;
