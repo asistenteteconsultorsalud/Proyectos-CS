@@ -382,7 +382,7 @@ export default function App() {
 
   const handleSwitchToDbMode = () => {
     setIsLocalMode(false);
-    localStorage.removeItem('gestor_is_local_mode');
+    localStorage.setItem('gestor_is_local_mode', 'false');
     window.location.reload();
   };
 
@@ -933,7 +933,7 @@ export default function App() {
                 onClick={handleBypassDb}
                 className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold transition-all flex items-center justify-center"
               >
-                Continuar en Modo Local (Demo)
+                Ignorar y Continuar en Modo Local Offline
               </button>
             </div>
           </div>

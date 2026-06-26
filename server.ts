@@ -504,63 +504,83 @@ app.use((req, res, next) => {
 });
 
 app.get("/api/test-db", async (req, res) => {
-  const currentEnvUrl = (process.env.DATABASE_URL || "").trim();
-  let status = "Not tested";
-  let debugInfo: any = {
-    exists: !!currentEnvUrl,
-    length: currentEnvUrl.length,
-    node_env: process.env.NODE_ENV,
-    is_vercel: !!process.env.VERCEL,
-  };
+  try {
+    const currentEnvUrl = (process.env.DATABASE_URL || "").trim();
+    let status = "Not tested";
+    let debugInfo: any = {
+      exists: !!currentEnvUrl,
+      length: currentEnvUrl.length,
+      node_env: process.env.NODE_ENV,
+      is_vercel: !!process.env.VERCEL,
+    };
 
-  if (currentEnvUrl) {
-    try {
-      const parsed = new URL(currentEnvUrl);
-      parsed.password = "****";
-      debugInfo.parsed_preview = parsed.toString();
-    } catch (e: any) {
-      debugInfo.parse_error = e.message;
-      debugInfo.raw_preview = currentEnvUrl.substring(0, 15) + "..." + currentEnvUrl.substring(Math.max(0, currentEnvUrl.length - 15));
-    }
-
-    let sanitizedUrl = "";
-    try {
-      sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
-      debugInfo.sanitized_preview = sanitizedUrl.replace(/\/\/([^:]+):([^@]+)@/, "//$1:****@");
-    } catch (err: any) {
-      debugInfo.sanitizing_error = err.message;
-    }
-
-    if (!sanitizedUrl) {
-      status = "Failed";
-      debugInfo.connect_error = "DATABASE_URL is empty or invalid after sanitization.";
-    } else {
-      const client = new pg.Client({
-        connectionString: sanitizedUrl,
-        ssl: { rejectUnauthorized: false },
-      });
-
+    if (currentEnvUrl) {
       try {
-        await client.connect();
-        const dbRes = await client.query("SELECT version()");
-        status = "Success";
-        debugInfo.db_version = dbRes.rows[0]?.version;
-        await client.end();
-      } catch (connectErr: any) {
+        const parsed = new URL(currentEnvUrl);
+        parsed.password = "****";
+        debugInfo.parsed_preview = parsed.toString();
+      } catch (e: any) {
+        debugInfo.parse_error = e.message;
+        debugInfo.raw_preview = currentEnvUrl.substring(0, 15) + "..." + currentEnvUrl.substring(Math.max(0, currentEnvUrl.length - 15));
+      }
+
+      let sanitizedUrl = "";
+      try {
+        sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
+        debugInfo.sanitized_preview = sanitizedUrl.replace(/\/\/([^:]+):([^@]+)@/, "//$1:****@");
+      } catch (err: any) {
+        debugInfo.sanitizing_error = err.message;
+      }
+
+      if (!sanitizedUrl) {
         status = "Failed";
-        debugInfo.connect_error = connectErr.message || String(connectErr);
-        debugInfo.connect_error_stack = connectErr.stack;
+        debugInfo.connect_error = "DATABASE_URL is empty or invalid after sanitization.";
+      } else {
+        let client: pg.Client | null = null;
         try {
-          await client.end();
-        } catch (e) {}
+          client = new pg.Client({
+            connectionString: sanitizedUrl,
+            ssl: { rejectUnauthorized: false },
+          });
+        } catch (clientCreationErr: any) {
+          status = "Failed";
+          debugInfo.connect_error = "Error al inicializar el cliente de PostgreSQL: " + (clientCreationErr.message || String(clientCreationErr));
+        }
+
+        if (client) {
+          try {
+            await client.connect();
+            const dbRes = await client.query("SELECT version()");
+            status = "Success";
+            debugInfo.db_version = dbRes.rows[0]?.version;
+            await client.end();
+          } catch (connectErr: any) {
+            status = "Failed";
+            debugInfo.connect_error = connectErr.message || String(connectErr);
+            debugInfo.connect_error_stack = connectErr.stack;
+            try {
+              await client.end();
+            } catch (e) {}
+          }
+        }
       }
     }
-  }
 
-  res.json({
-    status,
-    debugInfo
-  });
+    res.json({
+      status,
+      debugInfo
+    });
+  } catch (globalErr: any) {
+    console.error("Global error in /api/test-db:", globalErr);
+    res.status(200).json({
+      status: "Failed",
+      debugInfo: {
+        global_error: globalErr.message || String(globalErr),
+        global_error_stack: globalErr.stack,
+        connect_error: "Error interno en el servidor de pruebas: " + (globalErr.message || String(globalErr))
+      }
+    });
+  }
 });
 
 // Middleware to ensure DB is initialized lazily
