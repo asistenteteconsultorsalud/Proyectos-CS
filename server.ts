@@ -6,8 +6,9 @@ import { INITIAL_PROJECTS, INITIAL_FOLLOWUPS } from './src/mockData';
 
 dotenv.config({ override: true });
 
-// Lazy-initialize connection pool so that DATABASE_URL is read at runtime
-const { Pool } = pg;
+// Safely resolve Pool and Client for both CJS/ESM and Vercel bundler compatibility
+const PoolClass = pg.Pool || (pg as any).default?.Pool;
+const ClientClass = pg.Client || (pg as any).default?.Client;
 
 let poolInstance: pg.Pool | null = null;
 let lastUsedDatabaseUrl: string | null = null;
@@ -83,7 +84,7 @@ function getPool(): pg.Pool {
       throw new Error("DATABASE_URL is invalid or empty after sanitization.");
     }
     
-    poolInstance = new Pool({
+    poolInstance = new PoolClass({
       connectionString: sanitizedUrl,
       ssl: { rejectUnauthorized: false },
       max: 4,                      // Keep connection count low for Serverless / FaaS environments
@@ -538,9 +539,9 @@ app.get("/api/test-db", async (req, res) => {
         status = "Failed";
         debugInfo.connect_error = "DATABASE_URL is empty or invalid after sanitization.";
       } else {
-        let client: pg.Client | null = null;
+        let client: any = null;
         try {
-          client = new pg.Client({
+          client = new ClientClass({
             connectionString: sanitizedUrl,
             ssl: { rejectUnauthorized: false },
           });

@@ -86,7 +86,19 @@ export default function SettingsPanel({
       }
       const res = await fetch('/api/test-db', { headers });
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: El servidor no pudo procesar la solicitud de diagnóstico.`);
+        let serverErr = "";
+        try {
+          const text = await res.text();
+          if (text) {
+            try {
+              const parsed = JSON.parse(text);
+              serverErr = parsed.details || parsed.error || parsed.message || text;
+            } catch {
+              serverErr = text;
+            }
+          }
+        } catch (_) {}
+        throw new Error(`HTTP ${res.status}: ${serverErr || 'El servidor no pudo procesar la solicitud de diagnóstico.'}`);
       }
       const data = await res.json();
       if (data.status === 'Success') {
