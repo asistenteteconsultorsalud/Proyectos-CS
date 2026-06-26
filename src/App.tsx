@@ -40,12 +40,22 @@ export default function App() {
   });
 
   const [customDbUrl, setCustomDbUrl] = useState<string>(() => {
-    return localStorage.getItem('gestor_database_url') || '';
+    const saved = localStorage.getItem('gestor_database_url') || '';
+    if (!saved || saved.includes('ep-morning-art-atwh6yqv-pooler')) {
+      const defaultUrl = 'postgresql://neondb_owner:npg_zEXI6OPWAw0g@ep-calm-star-ad57xznb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+      localStorage.setItem('gestor_database_url', defaultUrl);
+      return defaultUrl;
+    }
+    return saved;
   });
 
   const apiFetch = (url: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers);
-    const dbUrl = localStorage.getItem('gestor_database_url') || '';
+    let dbUrl = localStorage.getItem('gestor_database_url') || '';
+    if (!dbUrl || dbUrl.includes('ep-morning-art-atwh6yqv-pooler')) {
+      dbUrl = 'postgresql://neondb_owner:npg_zEXI6OPWAw0g@ep-calm-star-ad57xznb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+      localStorage.setItem('gestor_database_url', dbUrl);
+    }
     if (dbUrl) {
       headers.set('x-database-url', dbUrl);
     }

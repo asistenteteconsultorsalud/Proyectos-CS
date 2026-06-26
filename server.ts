@@ -11,6 +11,8 @@ const { Pool } = pg;
 
 let poolInstance: pg.Pool | null = null;
 let lastUsedDatabaseUrl: string | null = null;
+let dbInitialized = false;
+let dbInitializationPromise: Promise<void> | null = null;
 
 function sanitizeDatabaseUrl(rawUrl: string): string {
   let cleaned = (rawUrl || "").trim();
@@ -584,9 +586,6 @@ app.get("/api/test-db", async (req, res) => {
 });
 
 // Middleware to ensure DB is initialized lazily
-let dbInitialized = false;
-let dbInitializationPromise: Promise<void> | null = null;
-
 async function ensureDb() {
   if (dbInitialized) return;
   if (!dbInitializationPromise) {
