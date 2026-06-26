@@ -28,6 +28,11 @@ interface SettingsPanelProps {
   onSetTeamRoster: (updated: string[]) => void;
   areaColors: Record<string, string>;
   onUpdateAreaColor: (areaName: string, colorKey: string) => void;
+  customDbUrl: string;
+  onUpdateCustomDbUrl: (url: string) => void;
+  isLocalMode: boolean;
+  onSwitchToDbMode: () => void;
+  onBypassDb: () => void;
 }
 
 // Map of standard tailwind colors accessible by user
@@ -56,8 +61,13 @@ export default function SettingsPanel({
   onSetTeamRoster,
   areaColors,
   onUpdateAreaColor,
+  customDbUrl,
+  onUpdateCustomDbUrl,
+  isLocalMode,
+  onSwitchToDbMode,
+  onBypassDb,
 }: SettingsPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'areas' | 'etapas'>('areas');
+  const [activeSubTab, setActiveSubTab] = useState<'areas' | 'etapas' | 'conexion'>('areas');
 
   // --- Area form states ---
   const [newAreaName, setNewAreaName] = useState('');
@@ -227,7 +237,7 @@ export default function SettingsPanel({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200 text-xs">
+        <div className="flex flex-wrap bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200 text-xs gap-1">
           <button
             onClick={() => { setActiveSubTab('areas'); setEditingStageKey(null); setIsCreatingStage(false); }}
             className={`px-4 py-2 rounded-xl font-semibold cursor-pointer transition-all ${
@@ -243,6 +253,14 @@ export default function SettingsPanel({
             }`}
           >
             Etapas del Contrato
+          </button>
+          <button
+            onClick={() => { setActiveSubTab('conexion'); setEditingAreaName(null); setEditingStageKey(null); setIsCreatingStage(false); }}
+            className={`px-4 py-2 rounded-xl font-semibold cursor-pointer transition-all ${
+              activeSubTab === 'conexion' ? 'bg-white text-blue-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-950'
+            }`}
+          >
+            Base de Datos (Neon / Vercel)
           </button>
         </div>
       </div>
@@ -783,6 +801,121 @@ export default function SettingsPanel({
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'conexion' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-sm">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-black text-slate-850 flex items-center gap-1.5 uppercase tracking-wide">
+              <Sliders className="w-4 h-4 text-blue-600" />
+              Configuración de Conexión de Base de Datos
+            </h3>
+            <span className="text-[10px] text-slate-400 font-bold">Neon PostgreSQL</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Actualizar URL de Conexión desde la Aplicación</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Puedes pegar directamente tu cadena de conexión (Connection String) de Neon PostgreSQL aquí. 
+                Se guardará localmente en tu navegador y se usará para realizar todas las consultas de la aplicación.
+              </p>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const newUrl = formData.get('dbUrl') as string;
+                onUpdateCustomDbUrl(newUrl);
+              }} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase">Enlace de Conexión (DATABASE_URL)</label>
+                  <input
+                    type="text"
+                    name="dbUrl"
+                    defaultValue={customDbUrl}
+                    placeholder="postgresql://neondb_owner:password@ep-host..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-850 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                  >
+                    Guardar y Conectar
+                  </button>
+                  {customDbUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateCustomDbUrl('');
+                        const input = document.getElementsByName('dbUrl')[0] as HTMLInputElement;
+                        if (input) input.value = '';
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all"
+                    >
+                      Restaurar por Defecto
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Modo de Operación</h4>
+                <div className="flex gap-2">
+                  {isLocalMode ? (
+                    <button
+                      onClick={onSwitchToDbMode}
+                      className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold transition-all"
+                    >
+                      Cambiar a Modo Sincronizado (DB)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onBypassDb}
+                      className="px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold transition-all"
+                    >
+                      Cambiar a Modo Local (Sin DB)
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 text-xs">
+              <h4 className="font-black text-slate-800 uppercase tracking-wide text-[10px] flex items-center gap-1.5">
+                <HelpCircle className="w-4 h-4 text-amber-500" />
+                ¿Cómo solucionar la conexión en Vercel permanentemente?
+              </h4>
+              <p className="text-slate-600 leading-relaxed">
+                Si deseas que la conexión funcione automáticamente en Vercel sin tener que pegar la URL en esta página cada vez, sigue estos sencillos pasos:
+              </p>
+              <ol className="list-decimal list-inside space-y-2 text-slate-600 font-medium">
+                <li>
+                  Inicia sesión en tu cuenta de <strong className="text-slate-800">Vercel</strong> y ve al Dashboard de tu proyecto.
+                </li>
+                <li>
+                  Navega a la pestaña de <strong className="text-slate-800">Settings</strong> (Configuración) y selecciona <strong className="text-slate-800">Environment Variables</strong> (Variables de Entorno).
+                </li>
+                <li>
+                  Agrega una nueva variable con el nombre:
+                  <div className="my-1 font-mono bg-slate-200 text-slate-800 px-2 py-1 rounded inline-block select-all font-bold">DATABASE_URL</div>
+                </li>
+                <li>
+                  Pega el enlace de conexión de tu base de datos de Neon en el campo de valor.
+                  <span className="block text-[10px] text-amber-600 mt-1 font-semibold">⚠️ Asegúrate de incluir el usuario, contraseña, servidor y el nombre de la base de datos correctamente.</span>
+                </li>
+                <li>
+                  Presiona el botón <strong className="text-slate-800">Save</strong> (Guardar).
+                </li>
+                <li>
+                  Finalmente, ve a la pestaña de <strong className="text-slate-800">Deployments</strong>, selecciona tu despliegue más reciente y haz clic en <strong className="text-slate-800">Redeploy</strong> (Redesplegar) para que los cambios surtan efecto.
+                </li>
+              </ol>
+            </div>
           </div>
         </div>
       )}

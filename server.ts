@@ -515,6 +515,21 @@ app.get("/api/test-db", async (req, res) => {
   });
 });
 
+// Middleware to handle request-based database URL overrides (useful for serverless environments like Vercel)
+app.use((req, res, next) => {
+  const customDbUrl = req.headers['x-database-url'] || req.headers['x-db-url'];
+  if (customDbUrl && typeof customDbUrl === 'string') {
+    const trimmedUrl = customDbUrl.trim();
+    if (trimmedUrl && process.env.DATABASE_URL !== trimmedUrl) {
+      console.log("Database URL overridden via request headers. Resetting pool and initialization...");
+      process.env.DATABASE_URL = trimmedUrl;
+      dbInitialized = false;
+      dbInitializationPromise = null;
+    }
+  }
+  next();
+});
+
 // Middleware to ensure DB is initialized lazily
 let dbInitialized = false;
 let dbInitializationPromise: Promise<void> | null = null;

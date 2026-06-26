@@ -39,6 +39,19 @@ export default function App() {
     return localStorage.getItem('gestor_is_local_mode') === 'true';
   });
 
+  const [customDbUrl, setCustomDbUrl] = useState<string>(() => {
+    return localStorage.getItem('gestor_database_url') || '';
+  });
+
+  const apiFetch = (url: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers);
+    const dbUrl = localStorage.getItem('gestor_database_url') || '';
+    if (dbUrl) {
+      headers.set('x-database-url', dbUrl);
+    }
+    return fetch(url, { ...options, headers });
+  };
+
   const preventSyncRef = useRef(false);
   const [isSilentFetching, setIsSilentFetching] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -263,7 +276,7 @@ export default function App() {
         setLoading(true);
       }
       setDbError(null);
-      const response = await fetch('/api/data');
+      const response = await apiFetch('/api/data');
       if (!response.ok) {
         // Try parsing error directly from /api/data body first
         try {
@@ -279,7 +292,7 @@ export default function App() {
 
         // Fallback to db-status if parsing /api/data fails
         try {
-          const statusRes = await fetch('/api/db-status');
+          const statusRes = await apiFetch('/api/db-status');
           if (statusRes.ok) {
             const statusData = await statusRes.json();
             if (statusData.error) {
@@ -321,7 +334,7 @@ export default function App() {
       console.error("Error loading database data:", err);
       if (!silent) {
         try {
-          const statusRes = await fetch('/api/db-status');
+          const statusRes = await apiFetch('/api/db-status');
           if (statusRes.ok) {
             const statusData = await statusRes.json();
             if (statusData.error) {
@@ -392,7 +405,7 @@ export default function App() {
       else if (key === 'readNotifIds') localStorage.setItem('gestor_read_notif_ids', JSON.stringify(value));
       return;
     }
-    fetch('/api/settings', {
+    apiFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value })
@@ -406,7 +419,7 @@ export default function App() {
       localStorage.setItem('gestor_projects', JSON.stringify(projects));
       return;
     }
-    fetch('/api/projects/sync', {
+    apiFetch('/api/projects/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(projects)
@@ -419,7 +432,7 @@ export default function App() {
       localStorage.setItem('gestor_followups', JSON.stringify(followUps));
       return;
     }
-    fetch('/api/followups/sync', {
+    apiFetch('/api/followups/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(followUps)
@@ -868,11 +881,43 @@ export default function App() {
             <div className="space-y-2 text-sm text-slate-600">
               <p className="font-semibold text-slate-700">¿Qué significa esto?</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Es posible que la variable <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">DATABASE_URL</code> no esté configurada correctamente.</li>
+                <li>Es posible que la variable <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">DATABASE_URL</code> no esté configurada en las Variables de Entorno de Vercel.</li>
                 <li>Hemos sanitizado automáticamente la conexión quitando parámetros como <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">channel_binding=require</code> para maximizar la compatibilidad.</li>
                 <li>La base de datos puede estar inactiva, cargando o el usuario de Neon puede no tener privilegios.</li>
               </ul>
             </div>
+
+            {/* Form to paste DATABASE_URL directly in the page */}
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const newUrl = (formData.get('urlInput') as string || '').trim();
+              if (newUrl) {
+                localStorage.setItem('gestor_database_url', newUrl);
+                setCustomDbUrl(newUrl);
+                setDbError(null);
+                setLoading(true);
+                window.location.reload();
+              }
+            }} className="pt-3 border-t border-slate-150 space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">¿Deseas configurar una URL de conexión personalizada?</label>
+              <p className="text-[11px] text-slate-500 leading-normal">Pega aquí tu cadena de conexión (Connection String) de Neon. Se guardará localmente en tu navegador y se usará para realizar todas las consultas de la aplicación de inmediato:</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  name="urlInput"
+                  defaultValue={customDbUrl}
+                  placeholder="postgresql://neondb_owner:password@ep-host..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs whitespace-nowrap active:scale-95 transition"
+                >
+                  Guardar y Conectar
+                </button>
+              </div>
+            </form>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
@@ -1349,6 +1394,16 @@ export default function App() {
                 onSetTeamRoster={setTeamRoster}
                 areaColors={areaColors}
                 onUpdateAreaColor={handleUpdateAreaColor}
+                customDbUrl={customDbUrl}
+                onUpdateCustomDbUrl={(url) => {
+                  localStorage.setItem('gestor_database_url', url);
+                  setCustomDbUrl(url);
+                  showToast('Enlace de conexión de Base de Datos actualizado.', 'success');
+                  window.location.reload();
+                }}
+                isLocalMode={isLocalMode}
+                onSwitchToDbMode={handleSwitchToDbMode}
+                onBypassDb={handleBypassDb}
               />
             </motion.div>
           )}
