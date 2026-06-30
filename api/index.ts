@@ -1,7 +1,7 @@
-import app from "../server";
-
 export default async function handler(req: any, res: any) {
   try {
+    // @ts-ignore
+    const { default: app } = await import("../dist/server.cjs");
     return app(req, res);
   } catch (err: any) {
     console.error("Vercel API entrypoint error during handling:", err);
