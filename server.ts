@@ -961,8 +961,14 @@ app.use("/api", async (req, res, next) => {
     }
   });
 
-  // Vite middleware and listener setup (only if NOT on Vercel)
-  if (!process.env.VERCEL) {
+  // Vite middleware and listener setup (only if run directly and NOT on Vercel)
+  const isMainModule = typeof process !== "undefined" && process.argv && process.argv[1] && (
+    process.argv[1].endsWith('server.ts') ||
+    process.argv[1].endsWith('server.cjs') ||
+    process.argv[1].endsWith('server.js')
+  );
+
+  if (isMainModule && !process.env.VERCEL) {
     (async () => {
       try {
         if (process.env.NODE_ENV !== "production") {
