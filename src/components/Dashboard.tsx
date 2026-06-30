@@ -101,6 +101,7 @@ interface DashboardProps {
   onSelectProject: (projectId: string) => void;
   onSelectStage: (stage: string) => void;
   involvedAreas?: string[];
+  peopleByArea?: Record<string, string[]>;
   stageDetails?: Record<string, { label: string; color: string; bg: string; border: string; text: string; definition: string; keyDeliverables: string[]; typicalDuration: string }>;
   onExportPDF?: () => void;
 }
@@ -110,6 +111,7 @@ export default function Dashboard({
   onSelectProject, 
   onSelectStage,
   involvedAreas = INVOLVED_AREAS,
+  peopleByArea = PREDEFINED_PEOPLE_BY_AREA,
   stageDetails = STAGE_DETAILS as any,
   onExportPDF
 }: DashboardProps) {
@@ -566,8 +568,8 @@ export default function Dashboard({
             </div>
 
             <div className="space-y-4">
-              {INVOLVED_AREAS.map(area => {
-                const stats = areaCounts[area];
+              {involvedAreas.map(area => {
+                const stats = areaCounts[area] || { count: 0, activeCount: 0, avgProgress: 0, totalMilestones: 0, completedMilestones: 0 };
                 if (stats.count === 0) return null;
 
                 return (
@@ -1164,7 +1166,7 @@ export default function Dashboard({
               <div className="space-y-3">
                 <span className="text-[10px] font-black uppercase text-slate-450 tracking-wider block">🤝 Especialistas y Profesionales Integrantes</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                  {(PREDEFINED_PEOPLE_BY_AREA[selectedAreaModal] || []).map((person, i) => (
+                  {(peopleByArea[selectedAreaModal] || []).map((person, i) => (
                     <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100/80 rounded-xl hover:border-slate-205 transition-all text-xs font-medium text-slate-800">
                       <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-650 flex items-center justify-center font-bold text-[10px] border border-slate-300 shrink-0">
                         {person.substring(0, 2).toUpperCase()}
@@ -1175,7 +1177,7 @@ export default function Dashboard({
                       </div>
                     </div>
                   ))}
-                  {(!PREDEFINED_PEOPLE_BY_AREA[selectedAreaModal] || PREDEFINED_PEOPLE_BY_AREA[selectedAreaModal].length === 0) && (
+                  {(!peopleByArea[selectedAreaModal] || peopleByArea[selectedAreaModal].length === 0) && (
                     <p className="text-xs text-slate-450 italic">No hay especialistas asignados permanente actualmente.</p>
                   )}
                 </div>

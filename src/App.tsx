@@ -1224,6 +1224,7 @@ export default function App() {
                 onSelectProject={handleSelectProject}
                 onSelectStage={handleSelectStage}
                 involvedAreas={involvedAreas}
+                peopleByArea={peopleByArea}
                 stageDetails={stageDetails}
                 onExportPDF={handleExportPDF}
               />
