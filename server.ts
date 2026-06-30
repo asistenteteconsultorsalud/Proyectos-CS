@@ -13,6 +13,7 @@ const ClientClass = pg.Client || (pg as any).default?.Client;
 let poolInstance: pg.Pool | null = null;
 let lastUsedDatabaseUrl: string | null = null;
 let dbInitialized = false;
+let isInitializing = false;
 let dbInitializationPromise: Promise<void> | null = null;
 
 function sanitizeDatabaseUrl(rawUrl: string): string {
@@ -76,12 +77,32 @@ function getPool(): pg.Pool {
 
   if (!poolInstance) {
     if (!currentEnvUrl) {
-      throw new Error("DATABASE_URL variable is empty or not defined. Please verify your Vercel project Environment Variables configuration.");
+      // Return a safe dummy pool that fails gracefully when queries are executed, 
+      // preventing startup crashes during module inspection or pre-configuration.
+      return {
+        query: async () => {
+          throw new Error("DATABASE_URL variable is empty or not defined. Please verify your Vercel project Environment Variables configuration.");
+        },
+        connect: async () => {
+          throw new Error("DATABASE_URL variable is empty or not defined. Please verify your Vercel project Environment Variables configuration.");
+        },
+        on: () => {},
+        end: async () => {},
+      } as unknown as pg.Pool;
     }
     
     const sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
     if (!sanitizedUrl) {
-      throw new Error("DATABASE_URL is invalid or empty after sanitization.");
+      return {
+        query: async () => {
+          throw new Error("DATABASE_URL is invalid or empty after sanitization.");
+        },
+        connect: async () => {
+          throw new Error("DATABASE_URL is invalid or empty after sanitization.");
+        },
+        on: () => {},
+        end: async () => {},
+      } as unknown as pg.Pool;
     }
     
     poolInstance = new PoolClass({
@@ -105,6 +126,15 @@ let dbConnectionStatus: { connected: boolean; error: string | null } = {
 // Use Proxy to delegate all Pool queries dynamically to the active poolInstance
 const pool = new Proxy({} as pg.Pool, {
   get(target, prop, receiver) {
+    // Avoid triggering getPool() during standard module/bundler checks or Promise checks
+    if (
+      prop === "then" ||
+      prop === "toJSON" ||
+      prop === "constructor" ||
+      typeof prop === "symbol"
+    ) {
+      return Reflect.get(target, prop, receiver);
+    }
     const activePool = getPool();
     const value = Reflect.get(activePool, prop);
     if (typeof value === "function") {
@@ -544,6 +574,7 @@ app.get("/api/test-db", async (req, res) => {
           client = new ClientClass({
             connectionString: sanitizedUrl,
             ssl: { rejectUnauthorized: false },
+            connectionTimeoutMillis: 4000, // Fail fast (4s) natively to avoid serverless function hangs/leaks
           });
         } catch (clientCreationErr: any) {
           status = "Failed";
@@ -552,12 +583,7 @@ app.get("/api/test-db", async (req, res) => {
 
         if (client) {
           try {
-            // Protect connection attempt with a 4-second timeout to prevent serverless function hangs
-            const connectPromise = client.connect();
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Connection timed out (4s limit exceeded)")), 4000)
-            );
-            await Promise.race([connectPromise, timeoutPromise]);
+            await client.connect();
 
             const dbRes = await client.query("SELECT version()");
             status = "Success";
@@ -592,18 +618,24 @@ app.get("/api/test-db", async (req, res) => {
   }
 });
 
-// Middleware to ensure DB is initialized lazily
+// Middleware to ensure DB is initialized lazily and thread-safely
 async function ensureDb() {
   if (dbInitialized) return;
-  if (!dbInitializationPromise) {
-    dbInitializationPromise = initDb().then(() => {
-      dbInitialized = true;
-    }).catch(err => {
-      dbInitializationPromise = null; // retry on next request if it failed
-      throw err;
-    });
+  if (isInitializing) {
+    await dbInitializationPromise;
+    return;
   }
-  await dbInitializationPromise;
+  isInitializing = true;
+  try {
+    dbInitializationPromise = initDb();
+    await dbInitializationPromise;
+    dbInitialized = true;
+  } catch (err) {
+    dbInitializationPromise = null;
+    throw err;
+  } finally {
+    isInitializing = false;
+  }
 }
 
 // Ensure database is initialized before any API request is handled (except db-status and test-db)
