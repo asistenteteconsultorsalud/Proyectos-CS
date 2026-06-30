@@ -36,26 +36,19 @@ import { generatePDFReport } from './utils/pdfGenerator';
 export default function App() {
   // --- Persistent State Configuration ---
   const [isLocalMode, setIsLocalMode] = useState<boolean>(() => {
-    return localStorage.getItem('gestor_is_local_mode') !== 'false';
+    // Default to false so the application always tries to connect securely to the database.
+    const saved = localStorage.getItem('gestor_is_local_mode');
+    return saved === 'true';
   });
 
   const [customDbUrl, setCustomDbUrl] = useState<string>(() => {
-    const saved = localStorage.getItem('gestor_database_url') || '';
-    if (!saved || saved.includes('ep-morning-art-atwh6yqv-pooler')) {
-      const defaultUrl = 'postgresql://neondb_owner:npg_zEXI6OPWAw0g@ep-calm-star-ad57xznb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
-      localStorage.setItem('gestor_database_url', defaultUrl);
-      return defaultUrl;
-    }
-    return saved;
+    // No hardcoded database credentials. This is more secure and prevents information leaks.
+    return localStorage.getItem('gestor_database_url') || '';
   });
 
   const apiFetch = (url: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers);
-    let dbUrl = localStorage.getItem('gestor_database_url') || '';
-    if (!dbUrl || dbUrl.includes('ep-morning-art-atwh6yqv-pooler')) {
-      dbUrl = 'postgresql://neondb_owner:npg_zEXI6OPWAw0g@ep-calm-star-ad57xznb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
-      localStorage.setItem('gestor_database_url', dbUrl);
-    }
+    const dbUrl = localStorage.getItem('gestor_database_url') || '';
     if (dbUrl) {
       headers.set('x-database-url', dbUrl);
     }
@@ -387,7 +380,7 @@ export default function App() {
 
     setDbError(null);
     setLoading(false);
-    showToast("Trabajando en modo local (Desconectado de la base de datos). Tus datos se guardarán en el navegador.", "warning");
+    showToast("Trabajando en modo temporal de respaldo. Sus cambios se mantendrán de forma local en el navegador.", "warning");
   };
 
   const handleSwitchToDbMode = () => {
@@ -868,6 +861,12 @@ export default function App() {
   };
 
   if (dbError) {
+    const sanitizedDbError = typeof dbError === 'string' 
+      ? dbError.replace(/(postgres|postgresql|mongodb|mysql):\/\/[^@\s]+@[^\s]+/gi, "$1://[CONFIDENTIAL]")
+               .replace(/ep-[a-z0-9-]+-pooler\.[a-z0-9.-]+/gi, "[CONFIDENTIAL_HOST]")
+               .replace(/neondb_owner/gi, "[CONFIDENTIAL_USER]")
+      : String(dbError);
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans p-6">
         <div className="w-full max-w-xl bg-white rounded-xl shadow-md border border-red-100 overflow-hidden">
@@ -878,61 +877,28 @@ export default function App() {
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Error de conexión a la Base de Datos</h2>
-              <p className="text-xs text-slate-500 mt-0.5">La base de datos en Neon no respondió correctamente.</p>
+              <h2 className="text-lg font-bold text-slate-800">Error de conexión con el Servidor</h2>
+              <p className="text-xs text-slate-500 mt-0.5">La conexión con el servidor no se pudo establecer correctamente.</p>
             </div>
           </div>
           <div className="p-6 space-y-4">
             <div className="bg-slate-50 rounded-lg p-4 font-mono text-xs text-slate-700 max-h-40 overflow-y-auto border border-slate-200">
               <p className="font-semibold text-slate-900 mb-1">Detalle del error:</p>
-              {dbError}
+              {sanitizedDbError}
             </div>
 
             <div className="space-y-2 text-sm text-slate-600">
               <p className="font-semibold text-slate-700">¿Qué significa esto?</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Es posible que la variable <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">DATABASE_URL</code> no esté configurada en las Variables de Entorno de Vercel.</li>
-                <li>Hemos sanitizado automáticamente la conexión quitando parámetros como <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">channel_binding=require</code> para maximizar la compatibilidad.</li>
-                <li>La base de datos puede estar inactiva, cargando o el usuario de Neon puede no tener privilegios.</li>
+                <li>El servidor de datos puede estar experimentando tráfico elevado o inactividad temporal.</li>
+                <li>Por favor, reintente establecer la conexión.</li>
               </ul>
             </div>
 
-            {/* Form to paste DATABASE_URL directly in the page */}
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              const newUrl = (formData.get('urlInput') as string || '').trim();
-              if (newUrl) {
-                localStorage.setItem('gestor_database_url', newUrl);
-                setCustomDbUrl(newUrl);
-                setDbError(null);
-                setLoading(true);
-                window.location.reload();
-              }
-            }} className="pt-3 border-t border-slate-150 space-y-2">
-              <label className="text-xs font-bold text-slate-700 block">¿Deseas configurar una URL de conexión personalizada?</label>
-              <p className="text-[11px] text-slate-500 leading-normal">Pega aquí tu cadena de conexión (Connection String) de Neon. Se guardará localmente en tu navegador y se usará para realizar todas las consultas de la aplicación de inmediato:</p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  name="urlInput"
-                  defaultValue={customDbUrl}
-                  placeholder="postgresql://neondb_owner:password@ep-host..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs whitespace-nowrap active:scale-95 transition"
-                >
-                  Guardar y Conectar
-                </button>
-              </div>
-            </form>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-100">
               <button
                 onClick={handleRetryDb}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
               >
                 <svg className="w-4 h-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4.89M9 11l3 3L22 4" />
@@ -941,9 +907,9 @@ export default function App() {
               </button>
               <button
                 onClick={handleBypassDb}
-                className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold transition-all flex items-center justify-center"
+                className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold transition-all flex items-center justify-center cursor-pointer"
               >
-                Ignorar y Continuar en Modo Local Offline
+                Ignorar y Continuar en Modo Temporal
               </button>
             </div>
           </div>
@@ -958,7 +924,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-sm font-semibold text-slate-600 animate-pulse">
-            Conectando con la Base de Datos en Neon...
+            Cargando información del sistema...
           </p>
         </div>
       </div>
@@ -1243,45 +1209,6 @@ export default function App() {
 
       {/* 4. MAIN CANVAS CONTAINER */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
-        {/* Dynamic Database Sync & Refresh Indicator Status Bar */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isLocalMode ? 'bg-amber-400' : isSilentFetching ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isLocalMode ? 'bg-amber-500' : isSilentFetching ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-            </span>
-            <div className="text-xs">
-              <span className="font-semibold text-slate-700">Estado de la Conexión:</span>{' '}
-              <span className={`font-bold ${isLocalMode ? 'text-amber-600' : isSilentFetching ? 'text-amber-600' : 'text-emerald-600'}`}>
-                {isLocalMode 
-                  ? 'Modo Local (Desconectado de la Base de Datos)' 
-                  : isSilentFetching ? 'Sincronizando información en tiempo real...' : 'Conectado a Neon PostgreSQL (Sincronizado)'}
-              </span>
-            </div>
-          </div>
-          
-          {isLocalMode ? (
-            <button
-              onClick={handleSwitchToDbMode}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold text-amber-700 hover:bg-amber-50 transition cursor-pointer active:scale-95 bg-amber-50/50"
-              title="Volver a intentar conectar con la base de datos de Neon"
-            >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
-              <span>Conectar Base de Datos</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => loadData(true)}
-              disabled={isSilentFetching}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer active:scale-95 disabled:opacity-50 bg-slate-50/50`}
-              title="Sincronizar y actualizar datos de la base de datos"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isSilentFetching ? 'animate-spin' : ''}`} />
-              <span>Actualizar Datos</span>
-            </button>
-          )}
-        </div>
-
         {/* Dynamic Inner Layout Switcher with Framer Motion AnimatePresence */}
         <AnimatePresence mode="wait">
           {currentView === 'dashboard' && (

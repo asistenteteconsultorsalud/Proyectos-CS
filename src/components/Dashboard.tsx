@@ -548,7 +548,7 @@ export default function Dashboard({
                   </div>
                 ) : (
                   <p className="text-[10px] text-slate-450 italic bg-white/50 p-3 rounded-lg border border-slate-100 text-center">
-                    No se registran proyectos liquidados o finalizados en la base de datos actual.
+                    No se registran proyectos liquidados o finalizados en el sistema.
                   </p>
                 )}
               </div>

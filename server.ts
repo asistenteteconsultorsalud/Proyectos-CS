@@ -6,6 +6,14 @@ import { INITIAL_PROJECTS, INITIAL_FOLLOWUPS } from './src/mockData';
 
 dotenv.config({ override: true });
 
+function sanitizeError(msg: any): string {
+  if (!msg) return "";
+  const str = typeof msg === "string" ? msg : (msg.message || String(msg));
+  return str.replace(/(postgres|postgresql|mongodb|mysql):\/\/[^@\s]+@[^\s]+/gi, "$1://[CONFIDENTIAL]")
+            .replace(/ep-[a-z0-9-]+-pooler\.[a-z0-9.-]+/gi, "[CONFIDENTIAL_HOST]")
+            .replace(/neondb_owner/gi, "[CONFIDENTIAL_USER]");
+}
+
 // Safely resolve Pool and Client for both CJS/ESM and Vercel bundler compatibility
 const PoolClass = pg.Pool || (pg as any).default?.Pool;
 const ClientClass = pg.Client || (pg as any).default?.Client;
@@ -474,7 +482,7 @@ async function initDb() {
   } catch (error: any) {
     console.error("Error initializing database or seeding:", error);
     dbConnectionStatus.connected = false;
-    dbConnectionStatus.error = error.message || String(error);
+    dbConnectionStatus.error = sanitizeError(error);
     throw error;
   }
 }
@@ -539,80 +547,51 @@ app.use((req, res, next) => {
 app.get("/api/test-db", async (req, res) => {
   try {
     const currentEnvUrl = (process.env.DATABASE_URL || "").trim();
-    let status = "Not tested";
-    let debugInfo: any = {
-      exists: !!currentEnvUrl,
-      length: currentEnvUrl.length,
-      node_env: process.env.NODE_ENV,
-      is_vercel: !!process.env.VERCEL,
-    };
-
-    if (currentEnvUrl) {
-      try {
-        const parsed = new URL(currentEnvUrl);
-        parsed.password = "****";
-        debugInfo.parsed_preview = parsed.toString();
-      } catch (e: any) {
-        debugInfo.parse_error = e.message;
-        debugInfo.raw_preview = currentEnvUrl.substring(0, 15) + "..." + currentEnvUrl.substring(Math.max(0, currentEnvUrl.length - 15));
-      }
-
-      let sanitizedUrl = "";
-      try {
-        sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
-        debugInfo.sanitized_preview = sanitizedUrl.replace(/\/\/([^:]+):([^@]+)@/, "//$1:****@");
-      } catch (err: any) {
-        debugInfo.sanitizing_error = err.message;
-      }
-
-      if (!sanitizedUrl) {
-        status = "Failed";
-        debugInfo.connect_error = "DATABASE_URL is empty or invalid after sanitization.";
-      } else {
-        let client: any = null;
-        try {
-          client = new ClientClass({
-            connectionString: sanitizedUrl,
-            ssl: { rejectUnauthorized: false },
-            connectionTimeoutMillis: 4000, // Fail fast (4s) natively to avoid serverless function hangs/leaks
-          });
-        } catch (clientCreationErr: any) {
-          status = "Failed";
-          debugInfo.connect_error = "Error al inicializar el cliente de PostgreSQL: " + (clientCreationErr.message || String(clientCreationErr));
+    if (!currentEnvUrl) {
+      return res.json({
+        status: "Failed",
+        debugInfo: {
+          exists: false,
+          connect_error: "DATABASE_URL is empty or not configured."
         }
-
-        if (client) {
-          try {
-            await client.connect();
-
-            const dbRes = await client.query("SELECT version()");
-            status = "Success";
-            debugInfo.db_version = dbRes.rows[0]?.version;
-            await client.end();
-          } catch (connectErr: any) {
-            status = "Failed";
-            debugInfo.connect_error = connectErr.message || String(connectErr);
-            debugInfo.connect_error_stack = connectErr.stack;
-            try {
-              await client.end();
-            } catch (e) {}
-          }
-        }
-      }
+      });
     }
 
-    res.json({
-      status,
-      debugInfo
+    const sanitizedUrl = sanitizeDatabaseUrl(currentEnvUrl);
+    if (!sanitizedUrl) {
+      return res.json({
+        status: "Failed",
+        debugInfo: {
+          exists: true,
+          connect_error: "DATABASE_URL is empty after sanitization."
+        }
+      });
+    }
+
+    const client = new ClientClass({
+      connectionString: sanitizedUrl,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 4000,
     });
-  } catch (globalErr: any) {
-    console.error("Global error in /api/test-db:", globalErr);
-    res.status(200).json({
+
+    await client.connect();
+    await client.query("SELECT 1");
+    await client.end();
+
+    res.json({
+      status: "Success",
+      debugInfo: {
+        exists: true,
+        message: "Conexión establecida de forma segura con la Base de Datos de Consultorsalud."
+      }
+    });
+  } catch (err: any) {
+    console.error("Error in secure /api/test-db:", err);
+    res.json({
       status: "Failed",
       debugInfo: {
-        global_error: globalErr.message || String(globalErr),
-        global_error_stack: globalErr.stack,
-        connect_error: "Error interno en el servidor de pruebas: " + (globalErr.message || String(globalErr))
+        exists: true,
+        connect_error: sanitizeError(err)
       }
     });
   }
@@ -651,7 +630,7 @@ app.use("/api", async (req, res, next) => {
     next();
   } catch (err: any) {
     console.error("Database initialization failed:", err);
-    res.status(500).json({ error: "Database initialization failed", details: err.message });
+    res.status(500).json({ error: "Database initialization failed", details: sanitizeError(err) });
   }
 });
 
@@ -659,7 +638,10 @@ app.use("/api", async (req, res, next) => {
 
   // Get database connection status
   app.get("/api/db-status", (req, res) => {
-    res.json(dbConnectionStatus);
+    res.json({
+      connected: dbConnectionStatus.connected,
+      error: dbConnectionStatus.error ? sanitizeError(dbConnectionStatus.error) : null
+    });
   });
 
   // Get full combined data
@@ -733,7 +715,7 @@ app.use("/api", async (req, res, next) => {
       });
     } catch (err: any) {
       console.error("Error fetching api data:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -771,7 +753,7 @@ app.use("/api", async (req, res, next) => {
       res.json({ success: true });
     } catch (err: any) {
       console.error("Error saving project:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -798,7 +780,7 @@ app.use("/api", async (req, res, next) => {
     } catch (err: any) {
       await pool.query("ROLLBACK");
       console.error("Error syncing projects:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -810,7 +792,7 @@ app.use("/api", async (req, res, next) => {
       res.json({ success: true });
     } catch (err: any) {
       console.error("Error deleting project:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -837,7 +819,7 @@ app.use("/api", async (req, res, next) => {
       res.json({ success: true });
     } catch (err: any) {
       console.error("Error saving followup:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -861,7 +843,7 @@ app.use("/api", async (req, res, next) => {
     } catch (err: any) {
       await pool.query("ROLLBACK");
       console.error("Error syncing followups:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
@@ -957,7 +939,7 @@ app.use("/api", async (req, res, next) => {
       res.json({ success: true });
     } catch (err: any) {
       console.error(`Error saving setting ${key}:`, err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: sanitizeError(err) });
     }
   });
 
