@@ -443,42 +443,8 @@ async function initDb() {
       }
     }
     
-    // Seed projects
-    const countRes = await pool.query('SELECT COUNT(*) FROM projects');
-    const count = parseInt(countRes.rows[0].count, 10);
-    if (count === 0) {
-      console.log('Seeding initial projects to Neon Database...');
-      for (const p of INITIAL_PROJECTS) {
-        await pool.query(`
-          INSERT INTO projects (
-            id, name, entity, description, leader, start_date, due_date, budget, stage, 
-            areas, area_assignments, progress, has_blocker, blocker_description, milestones, issues, notes
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        `, [
-          p.id, p.name, p.entity, p.description, p.leader, p.startDate, p.dueDate, p.budget, p.stage,
-          JSON.stringify(p.areas), JSON.stringify(p.areaAssignments || {}), p.progress, p.hasBlocker, p.blockerDescription || '',
-          JSON.stringify(p.milestones), JSON.stringify(p.issues), p.notes || ''
-        ]);
-      }
-    }
-
-    // Seed followups
-    const fCountRes = await pool.query('SELECT COUNT(*) FROM followups');
-    const fCount = parseInt(fCountRes.rows[0].count, 10);
-    if (fCount === 0) {
-      console.log('Seeding initial followups to Neon Database...');
-      for (const f of INITIAL_FOLLOWUPS) {
-        await pool.query(`
-          INSERT INTO followups (
-            id, project_id, project_name, date, type, topics, agreements, next_check_date, status
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [
-          f.id, f.projectId, f.projectName, f.date, f.type, f.topics, f.agreements, f.nextCheckDate, f.status
-        ]);
-      }
-    }
-    
-    console.log("Seeding process completed.");
+    // No automatic seeding of dummy projects or followups to keep the database completely clean
+    console.log("Database initialized without dummy/seed data.");
   } catch (error: any) {
     console.error("Error initializing database or seeding:", error);
     dbConnectionStatus.connected = false;
