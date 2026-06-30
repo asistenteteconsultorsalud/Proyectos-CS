@@ -1,7 +1,11 @@
 export default async function handler(req: any, res: any) {
   try {
     // @ts-ignore
-    const { default: app } = await import("../dist/server.cjs");
+    const serverModule = await import("../dist/server.cjs");
+    let app = serverModule.default || serverModule;
+    if (app && typeof app === "object" && "default" in app) {
+      app = app.default;
+    }
     return app(req, res);
   } catch (err: any) {
     console.error("Vercel API entrypoint error during handling:", err);
